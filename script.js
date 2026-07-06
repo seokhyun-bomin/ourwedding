@@ -472,18 +472,6 @@
   let touchStartY = 0;
   let touchEndY = 0;
   let modalScrollY = 0;
-  let zoomScale = 1;
-  let zoomX = 0;
-  let zoomY = 0;
-  let isDraggingZoom = false;
-  let dragStartX = 0;
-  let dragStartY = 0;
-  let dragStartZoomX = 0;
-  let dragStartZoomY = 0;
-  let pinchStartDistance = 0;
-  let pinchStartScale = 1;
-  let isPinchingZoom = false;
-  let lastTapTime = 0;
 
   function openPhotoModal(images, index) {
     modalImages = images;
@@ -503,7 +491,6 @@
     const modal = $('#photoModal');
     modal.classList.remove('is-open');
     modal.style.display = 'none';
-    resetModalZoom();
 
     document.body.classList.remove('no-scroll');
 
@@ -514,7 +501,6 @@
 
   function showModalImage() {
     const img = $('#modalImg');
-    resetModalZoom();
     img.src = modalImages[modalIndex];
     $('#modalCounter').textContent = `${modalIndex + 1} / ${modalImages.length}`;
 
@@ -530,59 +516,6 @@
     }
   }
 
-  function clampModalZoomPan() {
-    if (zoomScale <= 1) {
-      zoomX = 0;
-      zoomY = 0;
-      return;
-    }
-
-    const img = $('#modalImg');
-    const maxX = Math.max(0, (img.clientWidth * (zoomScale - 1)) / 2);
-    const maxY = Math.max(0, (img.clientHeight * (zoomScale - 1)) / 2);
-    zoomX = Math.max(-maxX, Math.min(maxX, zoomX));
-    zoomY = Math.max(-maxY, Math.min(maxY, zoomY));
-  }
-
-  function applyModalZoom() {
-    const img = $('#modalImg');
-    clampModalZoomPan();
-    img.style.transform = `translate3d(${zoomX}px, ${zoomY}px, 0) scale(${zoomScale})`;
-    img.classList.toggle('is-zoomed', zoomScale > 1);
-  }
-
-  function resetModalZoom() {
-    zoomScale = 1;
-    zoomX = 0;
-    zoomY = 0;
-    isDraggingZoom = false;
-    isPinchingZoom = false;
-    applyModalZoom();
-  }
-
-  function setModalZoom(scale) {
-    zoomScale = Math.max(1, Math.min(4, scale));
-    if (zoomScale === 1) {
-      zoomX = 0;
-      zoomY = 0;
-    }
-    applyModalZoom();
-  }
-
-  function toggleModalZoom() {
-    if (zoomScale > 1) {
-      resetModalZoom();
-    } else {
-      setModalZoom(2);
-    }
-  }
-
-  function getTouchDistance(touches) {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.hypot(dx, dy);
-  }
-
   function initPhotoModal() {
     $('#modalClose').addEventListener('click', closePhotoModal);
     $('#modalPrev').addEventListener('click', () => modalNavigate(-1));
@@ -595,121 +528,30 @@
       }
     });
 
+    // Keyboard navigation
     document.addEventListener('keydown', (e) => {
       if (!modal.classList.contains('is-open')) return;
       if (e.key === 'Escape') closePhotoModal();
-      if (e.key === 'ArrowLeft' && zoomScale === 1) modalNavigate(-1);
-      if (e.key === 'ArrowRight' && zoomScale === 1) modalNavigate(1);
+      if (e.key === 'ArrowLeft') modalNavigate(-1);
+      if (e.key === 'ArrowRight') modalNavigate(1);
     });
 
+    // Swipe support
     const container = $('#modalContainer');
-    const img = $('#modalImg');
-
-    img.addEventListener('dblclick', (e) => {
-      e.preventDefault();
-      toggleModalZoom();
-    });
-
-    img.addEventListener('mousedown', (e) => {
-      if (zoomScale <= 1) return;
-      e.preventDefault();
-      isDraggingZoom = true;
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
-      dragStartZoomX = zoomX;
-      dragStartZoomY = zoomY;
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!isDraggingZoom) return;
-      zoomX = dragStartZoomX + e.clientX - dragStartX;
-      zoomY = dragStartZoomY + e.clientY - dragStartY;
-      applyModalZoom();
-    });
-
-    document.addEventListener('mouseup', () => {
-      isDraggingZoom = false;
-    });
 
     container.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        isPinchingZoom = true;
-        pinchStartDistance = getTouchDistance(e.touches);
-        pinchStartScale = zoomScale;
-        return;
-      }
-
       touchStartX = e.changedTouches[0].screenX;
       touchStartY = e.changedTouches[0].screenY;
-
-      if (zoomScale > 1) {
-        e.preventDefault();
-        isDraggingZoom = true;
-        dragStartX = e.touches[0].clientX;
-        dragStartY = e.touches[0].clientY;
-        dragStartZoomX = zoomX;
-        dragStartZoomY = zoomY;
-      }
-    }, { passive: false });
-
-    container.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 2 && isPinchingZoom) {
-        e.preventDefault();
-        const nextScale = pinchStartScale * (getTouchDistance(e.touches) / pinchStartDistance);
-        setModalZoom(nextScale);
-        return;
-      }
-
-      if (e.touches.length === 1 && isDraggingZoom && zoomScale > 1) {
-        e.preventDefault();
-        zoomX = dragStartZoomX + e.touches[0].clientX - dragStartX;
-        zoomY = dragStartZoomY + e.touches[0].clientY - dragStartY;
-        applyModalZoom();
-      }
-    }, { passive: false });
+    }, { passive: true });
 
     container.addEventListener('touchend', (e) => {
-      if (isPinchingZoom) {
-        if (e.touches.length < 2) isPinchingZoom = false;
-        return;
-      }
-
       touchEndX = e.changedTouches[0].screenX;
       touchEndY = e.changedTouches[0].screenY;
-
-      if (zoomScale > 1) {
-        const moved = Math.abs(touchStartX - touchEndX) + Math.abs(touchStartY - touchEndY);
-        const now = Date.now();
-        isDraggingZoom = false;
-
-        if (moved < 12 && now - lastTapTime < 300) {
-          e.preventDefault();
-          toggleModalZoom();
-        }
-
-        lastTapTime = now;
-        return;
-      }
-
-      const moved = Math.abs(touchStartX - touchEndX) + Math.abs(touchStartY - touchEndY);
-      const now = Date.now();
-
-      if (moved < 12 && now - lastTapTime < 300) {
-        e.preventDefault();
-        toggleModalZoom();
-        lastTapTime = 0;
-        return;
-      }
-
-      lastTapTime = now;
       handleSwipe();
-    }, { passive: false });
+    }, { passive: true });
   }
 
   function handleSwipe() {
-    if (zoomScale > 1) return;
-
     const diffX = touchStartX - touchEndX;
     const diffY = touchStartY - touchEndY;
     const minSwipe = 50;
@@ -717,9 +559,9 @@
     if (Math.abs(diffX) < minSwipe || Math.abs(diffX) < Math.abs(diffY)) return;
 
     if (diffX > 0) {
-      modalNavigate(1);
+      modalNavigate(1); // swipe left -> next
     } else {
-      modalNavigate(-1);
+      modalNavigate(-1); // swipe right -> prev
     }
   }
 
